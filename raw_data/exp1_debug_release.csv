@@ -1,0 +1,4 @@
+size,debug_ordinary_ms,debug_optimize_ms,debug_unroll_ms,release_ordinary_ms,release_optimize_ms,release_unroll_ms
+256,0.415,0.133,0.129,0.284,0.017,0.037
+1024,9.301,2.609,2.064,9.405,0.731,0.955
+4096,193.232,39.711,38.387,207.735,9.332,13.173
