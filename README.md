@@ -1,0 +1,2 @@
+# parallel_repository
+南开大学并行程序设计Lab2实验代码
