@@ -3,7 +3,6 @@
 #include <unordered_map>
 #include <queue>
 #include <omp.h>
-#include <algorithm>
 // #include <chrono>   
 // using namespace chrono;
 using namespace std;
@@ -134,14 +133,6 @@ public:
 
     // 打印模型
     void print();
-};
-
-struct PTProbLess
-{
-    bool operator()(const PT &a, const PT &b) const
-    {
-        return a.prob < b.prob;
-    }
 };
 
 // 优先队列，用于按照概率降序生成口令猜测

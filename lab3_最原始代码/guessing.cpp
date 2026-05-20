@@ -1,8 +1,7 @@
-//openMP优化版进阶一
+//原始代码
 #include "PCFG.h"
 using namespace std;
-#define NUM_THREADS 8
-#define OMP_PARALLEL_THRESHOLD 1024
+
 void PriorityQueue::CalProb(PT &pt)
 {
     // 计算PriorityQueue里面一个PT的流程如下：
@@ -56,10 +55,8 @@ void PriorityQueue::init()
 {
     // cout << m.ordered_pts.size() << endl;
     // 用所有可能的PT，按概率降序填满整个优先队列
-    priority.reserve(m.ordered_pts.size());
     for (PT pt : m.ordered_pts)
     {
-        
         for (segment seg : pt.content)
         {
             if (seg.type == 1)
@@ -90,27 +87,51 @@ void PriorityQueue::init()
         // 将PT放入优先队列
         priority.emplace_back(pt);
     }
-    make_heap(priority.begin(), priority.end(), PTProbLess());
     // cout << "priority size:" << priority.size() << endl;
 }
 
 void PriorityQueue::PopNext()
 {
-    PT current = priority.front();
 
-    pop_heap(priority.begin(), priority.end(), PTProbLess());
-    priority.pop_back();
+    // 对优先队列最前面的PT，首先利用这个PT生成一系列猜测
+    Generate(priority.front());
 
-    Generate(current);
-
-    vector<PT> new_pts = current.NewPTs();
+    // 然后需要根据即将出队的PT，生成一系列新的PT
+    vector<PT> new_pts = priority.front().NewPTs();
     for (PT pt : new_pts)
     {
+        // 计算概率
         CalProb(pt);
-        priority.emplace_back(pt);
-        push_heap(priority.begin(), priority.end(), PTProbLess());
+        // 接下来的这个循环，作用是根据概率，将新的PT插入到优先队列中
+        for (auto iter = priority.begin(); iter != priority.end(); iter++)
+        {
+            // 对于非队首和队尾的特殊情况
+            if (iter != priority.end() - 1 && iter != priority.begin())
+            {
+                // 判定概率
+                if (pt.prob <= iter->prob && pt.prob > (iter + 1)->prob)
+                {
+                    priority.emplace(iter + 1, pt);
+                    break;
+                }
+            }
+            if (iter == priority.end() - 1)
+            {
+                priority.emplace_back(pt);
+                break;
+            }
+            if (iter == priority.begin() && iter->prob < pt.prob)
+            {
+                priority.emplace(iter, pt);
+                break;
+            }
+        }
     }
+
+    // 现在队首的PT善后工作已经结束，将其出队（删除）
+    priority.erase(priority.begin());
 }
+
 // 这个函数你就算看不懂，对并行算法的实现影响也不大
 // 当然如果你想做一个基于多优先队列的并行算法，可能得稍微看一看了
 vector<PT> PT::NewPTs()
@@ -187,27 +208,13 @@ void PriorityQueue::Generate(PT pt)
         // 这个for循环就是你需要进行并行化的主要部分了，特别是在多线程&GPU编程任务中
         // 可以看到，这个循环本质上就是把模型中一个segment的所有value，赋值到PT中，形成一系列新的猜测
         // 这个过程是可以高度并行化的
-        int n = pt.max_indices[0];
-        size_t base = guesses.size();
-        guesses.resize(base + n);
-
-        if (n < OMP_PARALLEL_THRESHOLD)
+        for (int i = 0; i < pt.max_indices[0]; i += 1)
         {
-            for (int i = 0; i < n; ++i)
-            {
-                guesses[base + i] = a->ordered_values[i];
-            }
+            string guess = a->ordered_values[i];
+            // cout << guess << endl;
+            guesses.emplace_back(guess);
+            total_guesses += 1;
         }
-        else
-        {
-            #pragma omp parallel for num_threads(NUM_THREADS) schedule(static)
-            for (int i = 0; i < n; ++i)
-            {
-                guesses[base + i] = a->ordered_values[i];
-            }
-        }
-
-        total_guesses += n;
     }
     else
     {
@@ -256,27 +263,12 @@ void PriorityQueue::Generate(PT pt)
         // 这个for循环就是你需要进行并行化的主要部分了，特别是在多线程&GPU编程任务中
         // 可以看到，这个循环本质上就是把模型中一个segment的所有value，赋值到PT中，形成一系列新的猜测
         // 这个过程是可以高度并行化的
-        int last = pt.content.size() - 1;
-        int n = pt.max_indices[last];
-        size_t base = guesses.size();
-        guesses.resize(base + n);
-
-        if (n < OMP_PARALLEL_THRESHOLD)
+        for (int i = 0; i < pt.max_indices[pt.content.size() - 1]; i += 1)
         {
-            for (int i = 0; i < n; ++i)
-            {
-                guesses[base + i] = guess + a->ordered_values[i];
-            }
+            string temp = guess + a->ordered_values[i];
+            // cout << temp << endl;
+            guesses.emplace_back(temp);
+            total_guesses += 1;
         }
-        else
-        {
-            #pragma omp parallel for num_threads(NUM_THREADS) schedule(static)
-            for (int i = 0; i < n; ++i)
-            {
-                guesses[base + i] = guess + a->ordered_values[i];
-            }
-        }
-
-        total_guesses += n;
     }
 }

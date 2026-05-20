@@ -1,9 +1,8 @@
-//openMP最终版
 #include "PCFG.h"
 #include <fstream>
 #include <cctype>
 #include <algorithm>
-#define TRAIN_THREADS 8
+
 // 这个文件里面的各函数你都不需要完全理解，甚至根本不需要看
 // 从学术价值上讲，加速模型的训练过程是一个没什么价值的问题，因为我们一般假定统计学模型的训练成本较低
 // 但是，假如你是一个投稿时顶着ddl做实验的倒霉研究生/实习生，提高训练速度就可以大幅节省你的时间了
@@ -19,178 +18,28 @@
  * 
  */
 
-static void MergeSegmentValues(segment &dst, const segment &src)
-{
-    for (const auto &kv : src.values)
-    {
-        const string &value = kv.first;
-        int src_id = kv.second;
-        int count = src.freqs.at(src_id);
-
-        auto it = dst.values.find(value);
-        if (it == dst.values.end())
-        {
-            int new_id = dst.values.size();
-            dst.values[value] = new_id;
-            dst.freqs[new_id] = count;
-        }
-        else
-        {
-            dst.freqs[it->second] += count;
-        }
-    }
-}
-
-static void MergeOneSegment(model &dst, const segment &src_seg, int count)
-{
-    int id = -1;
-    vector<segment> *segments = nullptr;
-    unordered_map<int, int> *freqs = nullptr;
-
-    if (src_seg.type == 1)
-    {
-        id = dst.FindLetter(src_seg);
-        segments = &dst.letters;
-        freqs = &dst.letters_freq;
-        if (id == -1)
-        {
-            id = dst.GetNextLettersID();
-            segments->emplace_back(src_seg.type, src_seg.length);
-            (*freqs)[id] = 0;
-        }
-    }
-    else if (src_seg.type == 2)
-    {
-        id = dst.FindDigit(src_seg);
-        segments = &dst.digits;
-        freqs = &dst.digits_freq;
-        if (id == -1)
-        {
-            id = dst.GetNextDigitsID();
-            segments->emplace_back(src_seg.type, src_seg.length);
-            (*freqs)[id] = 0;
-        }
-    }
-    else
-    {
-        id = dst.FindSymbol(src_seg);
-        segments = &dst.symbols;
-        freqs = &dst.symbols_freq;
-        if (id == -1)
-        {
-            id = dst.GetNextSymbolsID();
-            segments->emplace_back(src_seg.type, src_seg.length);
-            (*freqs)[id] = 0;
-        }
-    }
-
-    (*freqs)[id] += count;
-    MergeSegmentValues((*segments)[id], src_seg);
-}
-
-static void MergeSegments(model &dst, const model &src)
-{
-    for (int i = 0; i < (int)src.letters.size(); ++i)
-    {
-        auto it = src.letters_freq.find(i);
-        if (it != src.letters_freq.end())
-        {
-            MergeOneSegment(dst, src.letters[i], it->second);
-        }
-    }
-
-    for (int i = 0; i < (int)src.digits.size(); ++i)
-    {
-        auto it = src.digits_freq.find(i);
-        if (it != src.digits_freq.end())
-        {
-            MergeOneSegment(dst, src.digits[i], it->second);
-        }
-    }
-
-    for (int i = 0; i < (int)src.symbols.size(); ++i)
-    {
-        auto it = src.symbols_freq.find(i);
-        if (it != src.symbols_freq.end())
-        {
-            MergeOneSegment(dst, src.symbols[i], it->second);
-        }
-    }
-}
-
-static void MergePreterminals(model &dst, const model &src)
-{
-    dst.total_preterm += src.total_preterm;
-
-    for (int i = 0; i < (int)src.preterminals.size(); ++i)
-    {
-        auto it = src.preterm_freq.find(i);
-        if (it == src.preterm_freq.end())
-        {
-            continue;
-        }
-
-        PT pt = src.preterminals[i];
-        int id = dst.FindPT(pt);
-        if (id == -1)
-        {
-            id = dst.GetNextPretermID();
-            dst.preterminals.emplace_back(pt);
-            dst.preterm_freq[id] = 0;
-        }
-
-        dst.preterm_freq[id] += it->second;
-    }
-}
-
-static void MergeModel(model &dst, const model &src)
-{
-    MergePreterminals(dst, src);
-    MergeSegments(dst, src);
-}
-
-
-
 // 训练的wrapper，实际上就是读取训练集
 void model::train(string path)
 {
     string pw;
     ifstream train_set(path);
-    vector<string> passwords;
     int lines = 0;
-
-    cout << "Training..." << endl;
-    cout << "Training phase 1: reading and parsing passwords..." << endl;
-
+    cout<<"Training..."<<endl;
+    cout<<"Training phase 1: reading and parsing passwords..."<<endl;
     while (train_set >> pw)
     {
         lines += 1;
         if (lines % 10000 == 0)
         {
-            cout << "Lines processed: " << lines << endl;
+            cout <<"Lines processed: "<< lines << endl;
+            // 在这里更改读取的训练集口令上限
             if (lines > 3000000)
             {
                 break;
             }
         }
-
-        passwords.emplace_back(pw);
-    }
-
-    vector<model> local_models(TRAIN_THREADS);
-    int password_count = passwords.size();
-
-#pragma omp parallel for num_threads(TRAIN_THREADS) schedule(static)
-    for (int i = 0; i < password_count; ++i)
-    {
-        int tid = omp_get_thread_num();
-        local_models[tid].parse(passwords[i]);
-    }
-
-    cout << "Merging local models..." << endl;
-    for (int i = 0; i < TRAIN_THREADS; ++i)
-    {
-        MergeModel(*this, local_models[i]);
+        // 读取单个口令之后，就可以将其扔进parse函数进行PT/segment的分割、识别、统计了
+        parse(pw);
     }
 }
 
@@ -624,38 +473,30 @@ bool compareByPretermProb(const PT& a, const PT& b) {
 void model::order()
 {
     cout << "Training phase 2: Ordering segment values and PTs..." << endl;
-
-    ordered_pts.reserve(preterminals.size());
-    for (int i = 0; i < (int)preterminals.size(); ++i)
+    for (PT pt : preterminals)
     {
-        PT pt = preterminals[i];
-        pt.preterm_prob = float(preterm_freq[i]) / total_preterm;
+        pt.preterm_prob = float(preterm_freq[FindPT(pt)]) / total_preterm;
         ordered_pts.emplace_back(pt);
     }
-
+    bool swapped;
     cout << "total pts" << ordered_pts.size() << endl;
     std::sort(ordered_pts.begin(), ordered_pts.end(), compareByPretermProb);
-
     cout << "Ordering letters" << endl;
-    int letter_count = letters.size();
-#pragma omp parallel for num_threads(TRAIN_THREADS) schedule(dynamic)
-    for (int i = 0; i < letter_count; ++i)
+    // cout << "total letters" << endl;
+    for (int i = 0; i < letters.size(); i += 1)
     {
+        // cout << i << endl;
         letters[i].order();
     }
-
     cout << "Ordering digits" << endl;
-    int digit_count = digits.size();
-#pragma omp parallel for num_threads(TRAIN_THREADS) schedule(dynamic)
-    for (int i = 0; i < digit_count; ++i)
+    // cout << "total letters" << endl;
+    for (int i = 0; i < digits.size(); i += 1)
     {
         digits[i].order();
     }
-
     cout << "ordering symbols" << endl;
-    int symbol_count = symbols.size();
-#pragma omp parallel for num_threads(TRAIN_THREADS) schedule(dynamic)
-    for (int i = 0; i < symbol_count; ++i)
+    // cout << "total letters" << endl;
+    for (int i = 0; i < symbols.size(); i += 1)
     {
         symbols[i].order();
     }

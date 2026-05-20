@@ -303,7 +303,6 @@ Lines processed: 2980000
 Lines processed: 2990000
 Lines processed: 3000000
 Lines processed: 3010000
-Merging local models...
 Training phase 2: Ordering segment values and PTs...
 total pts18966
 Ordering letters
@@ -383,8 +382,8 @@ Guesses generated: 9629249
 Guesses generated: 9788005
 Guesses generated: 9935620
 Guesses generated: 10035780
-Guess time:0.31472seconds
-Hash time:1.19138seconds
-Train time:9.72067seconds
+Guess time:0.186788seconds
+Hash time:1.14535seconds
+Train time:27.2616seconds
 
 Authorized users only. All activities may be monitored and reported.
