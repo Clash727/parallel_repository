@@ -1,5 +1,6 @@
 # Build artifacts
 *.obj
+*.o
 *.exe
 *.pdb
 *.ilk
@@ -11,6 +12,13 @@
 *.tlog
 *.lastbuildstate
 
+# Local outputs and datasets
+run_results.md
+Rockyou-singleLined-full.txt
+backup_*/
+*.zip
+*.tar.gz
+
 # Build directories
 .vs/
 x64/
@@ -21,6 +29,3 @@ Release/
 .venv/
 __pycache__/
 *.pyc
-
-# Profiling outputs
-amduprof-*/
